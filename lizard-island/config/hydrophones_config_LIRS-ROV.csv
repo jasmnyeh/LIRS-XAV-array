@@ -1,0 +1,5 @@
+name,x,y,z,array_channel,audio_file_channel,data_path,file_name_root
+Hydrophone 0,0,0.8,0,0,0,F:\LizardIsland_backup\MobileArray_deployments\2023-11-25_afternoon\ST\5147,5147.
+Hydrophone 1,0,0.4,0.5,1,1,F:\LizardIsland_backup\MobileArray_deployments\2023-11-25_afternoon\ST\5147,5147.
+Hydrophone 2,-0.35,0,0,2,2,F:\LizardIsland_backup\MobileArray_deployments\2023-11-25_afternoon\ST\5147,5147.
+Hydrophone 3,0.35,0,0,3,3,F:\LizardIsland_backup\MobileArray_deployments\2023-11-25_afternoon\ST\5147,5147.

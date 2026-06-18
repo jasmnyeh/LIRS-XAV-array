@@ -1,0 +1,5 @@
+audio_channel_number,UTC_offset,sampling_frequency,bit_depth,mooring_platform_name,recorder_type,recorder_SN,hydrophone_model,hydrophone_SN,hydrophone_depth,location_name,location_lat,location_lon,location_water_depth,deployment_ID,deployment_date,recovery_date
+0,+10,96000,16,mobile-array,ST4300-HF,5147,HTI-96-Min,1117006,0,LIRS,145.444910,-14.679119,4,LIRS-ROV-20231125-PM,20231125,20231125
+1,+10,96000,16,mobile-array,ST4300-HF,5147,HTI-96-Min,1117005,0,LIRS,-14.679119,145.444910,4,LIRS-ROV-20231125-PM,20231125,20231125
+2,+10,96000,16,mobile-array,ST4300-HF,5147,HTI-96-Min,1117008,0,LIRS,-14.679119,145.444910,4,LIRS-ROV-20231125-PM,20231125,20231125
+3,+10,96000,16,mobile-array,ST4300-HF,5147,HTI-96-Min,1117007,0,LIRS,-14.679119,145.444910,4,LIRS-ROV-20231125-PM,20231125,20231125
