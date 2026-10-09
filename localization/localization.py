@@ -9,6 +9,7 @@ import pandas as pd
 import mpl_toolkits.mplot3d
 import matplotlib.pyplot as plt
 import time
+import warnings
 from ecosound.core.audiotools import upsample
 import scipy.signal
 from tqdm import tqdm
@@ -651,20 +652,38 @@ class GridSearch:
 
     @staticmethod
     def calc_credibility_interval(axis, values, start_value, percentage):
+        """Return a centered credible interval on a 1D marginal PPD.
+
+        The interval is expanded outward from the MAP point, which is the
+        maximum a posteriori estimate. In this grid-search implementation, the
+        PPD is the normalized likelihood over the full 3D grid, so the MAP is
+        the grid point with the highest probability.
+        """
         values = values / sum(values)
         start_index = int(np.where(axis == start_value)[0])
-        IC_low_limit_idx, remainder = find_half_CI_value(
+        IC_low_limit_idx, remainder, low_stop_reason = find_half_CI_value(
             values, start_index, percentage / 2, -1
         )
-        IC_high_limit_idx, remainder = find_half_CI_value(
+        IC_high_limit_idx, remainder, high_stop_reason = find_half_CI_value(
             values, start_index + 1, percentage / 2 + remainder, 1
         )
         if remainder > 0:
-            IC_low_limit_idx, remainder = find_half_CI_value(
+            IC_low_limit_idx, remainder, low_stop_reason = find_half_CI_value(
                 values, IC_low_limit_idx, remainder, -1
             )
-        if sum(values[IC_low_limit_idx : IC_high_limit_idx + 1]) < percentage:
-            print("Issue while calculating the CI")
+        interval_mass = sum(values[IC_low_limit_idx : IC_high_limit_idx + 1])
+        if interval_mass < percentage:
+            lower_bound = axis[IC_low_limit_idx]
+            upper_bound = axis[IC_high_limit_idx]
+            message = (
+                "Credible interval could not reach the requested coverage. "
+                f"Requested {percentage:.0%}, achieved {interval_mass:.1%} "
+                f"around MAP={start_value}. Interval=({lower_bound}, {upper_bound}). "
+                f"Lower side stopped because {low_stop_reason}; upper side stopped because {high_stop_reason}. "
+                "This usually means the 1D marginal is clipped by the grid boundary or "
+                "the probability mass falls below the stopping threshold before enough mass is accumulated."
+            )
+            warnings.warn(message, RuntimeWarning, stacklevel=2)
         return [axis[IC_low_limit_idx], axis[IC_high_limit_idx]]
 
     @staticmethod
@@ -952,7 +971,7 @@ def calc_tdoa(
     """
     TDOA measurements
 
-    Calculates the time-difference of orrival (TDOA) between signals from
+    Calculates the time-difference of arrival (TDOA) between signals from
     different hydrophones by cross-correlation.
 
     Parameters
@@ -1086,6 +1105,7 @@ def calc_tdoa(
             ax[1].grid()
             ax[1].legend()
             plt.tight_layout()
+            # TODOs: add breakpoint so that it can go through each pair
     return np.array([tdoa_sec]).transpose(), np.array([tdoa_corr]).transpose()
 
 
@@ -1093,6 +1113,18 @@ def plot_localizations3D(localizations=None, hydrophones=None):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
+
+    numeric_columns = [
+        "x",
+        "y",
+        "z",
+        "x_err_low",
+        "x_err_high",
+        "y_err_low",
+        "y_err_high",
+        "z_err_low",
+        "z_err_high",
+    ]
 
     if hydrophones is not None:
         ax.scatter3D(
@@ -1108,7 +1140,11 @@ def plot_localizations3D(localizations=None, hydrophones=None):
         )
 
     if localizations is not None:
-        loc_data = localizations.data
+        loc_data = localizations.data.copy()
+        for column in numeric_columns:
+            if column in loc_data.columns:
+                loc_data[column] = pd.to_numeric(loc_data[column], errors="coerce")
+        loc_data = loc_data.dropna(subset=["x", "y", "z"])
         ax.scatter3D(
             loc_data["x"],
             loc_data["y"],
@@ -1173,6 +1209,7 @@ def find_half_CI_value(values, start_index, stop_val, step):
     current_idx = start_index
     current_sum = 0
     max_idx = len(values) - 1
+    stop_reason = "unknown"
     while (
         (current_sum < stop_val)
         & (current_idx >= 0)
@@ -1180,7 +1217,14 @@ def find_half_CI_value(values, start_index, stop_val, step):
     ):
         current_sum += values[current_idx]
         if values[current_idx] < min_current_value:
+            stop_reason = (
+                f"probability dropped below the cutoff ({min_current_value})"
+            )
             break
         current_idx += step
+    if current_idx < 0 or current_idx > max_idx:
+        stop_reason = "the grid boundary was reached"
+    elif stop_reason == "unknown":
+        stop_reason = "the requested probability mass was accumulated"
     remainder = stop_val - current_sum
-    return current_idx - step, remainder
+    return current_idx - step, remainder, stop_reason

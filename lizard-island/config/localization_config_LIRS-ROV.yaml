@@ -13,16 +13,19 @@ ENVIRONMENT:
     sound_speed_mps: 1484
 
 TDOA:
-    ref_channel: 1
-    upsample_res_sec: 0.00001
-    normalize: False
-    min_corr_val: 0.5 
-    number_freq_bands: 4
+    ref_channel: 3
+    upsample_res_sec: 0.00001 # decrease to increase accuracy
+    normalize: False # if True, then the cross-correlation is normalized by the energy of the signals, waveforms to 1
+    min_corr_val: 0.5 # depends on quality of the SNR, if set lower then make sure TDOA is accurate enough
+    number_freq_bands: 4 # if set to 1, then take the whole frequency range; maybe try 1 first
     min_bandwidth_hz: 200
-    energy_window_perc: 80
+    energy_window_perc: 80 # removes part of the waveform with low energy, can play around with this as well
+    # make sure energy window isn't cropping too much of the fish sound
+    # plot waveforms at differnt steps for 4 channels, apply band pass filter, check if energy window, calc tdoa & plot cross-correlation function of each pair if it makes sense
 
 GRIDSEARCH:
     x_limits_m: [-3,3] 
     y_limits_m: [-3,3]
-    z_limits_m: [-0.5,4]
-    spacing_m: 0.02
+    z_limits_m: [-0.5,4] # typically ROV is on the bottom
+    spacing_m: 0.02 # resolution of the grid search, try 0.01?
+    # can make grid wider to search for more points

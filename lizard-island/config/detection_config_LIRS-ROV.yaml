@@ -10,7 +10,7 @@
 # ####################################################
 
 AUDIO:
-    channel: 3
+    channel: 3 # channel to use for detection (0-indexed), also the channel in front of the ROV
 
 SPECTROGRAM:
     frame_sec: 0.04266 

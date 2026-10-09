@@ -280,6 +280,8 @@ def plot_single_channel(
     graph = GrapherFactory(
         "SoundPlotter", title="Recording", frequency_max=1000
     )
+    if detections:
+        graph.time_lim(time_min=detections.data["time_min_offset"].min(), time_max=detections.data["time_max_offset"].max())
     graph.add_data(sound)  # add waveform data
     graph.add_data(spectro)  # add spectrogram
     if detections:
