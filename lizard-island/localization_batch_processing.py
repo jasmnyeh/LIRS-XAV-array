@@ -16,15 +16,18 @@ import localization
 def get_args():
     p = argparse.ArgumentParser()
     p.add_argument("--folder", type=str, default="2023-11-24_morning", help="Date and time of the folder to process")
+    p.add_argument("--audio_dir", type=str, default=None, help="Path to the audio files directory")
+    p.add_argument("--detections_dir", type=str, default=None, help="Path to the detections directory")
+    p.add_argument("--output_dir", type=str, default=None, help="Path to the output directory")
     return p.parse_args()
 
 def main():
     args = get_args()
 
     # params
-    audio_dir = f"/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/{args.folder}/ST/5147/"
-    detections_dir = f"/Users/jasmineyeh/Desktop/WHOI/Selections/{args.folder}/"
-    output_dir = f"/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/{args.folder}/localization_results/"
+    audio_dir = args.audio_dir if args.audio_dir else f"/tmp2/b12902135/whoi/audio/{args.folder}/"
+    detections_dir = args.detections_dir if args.detections_dir else f"/tmp2/b12902135/whoi/Selections/{args.folder}/"
+    output_dir = args.output_dir if args.output_dir else f"/tmp2/b12902135/whoi/localization_results/{args.folder}/"
     # if not exist then create output_dir
     os.makedirs(output_dir, exist_ok=True)
 
@@ -43,8 +46,11 @@ def main():
     # hydrophone configs
     hydrophones_config_file = r'./config/hydrophones_config_LIRS-ROV.csv'
     hydrophones_config= pd.read_csv(hydrophones_config_file, skipinitialspace=True, dtype={'name': str, 'file_name_root': str})
-    # replace data path 
-    hydrophones_config["data_path"] += f"{args.folder}/ST/5147/"
+    # fix hydrophone data path
+    if args.audio_dir:
+        hydrophones_config["data_path"] = args.audio_dir
+    else:
+        hydrophones_config["data_path"] += f"{args.folder}/"
     print("Loaded hydrophone configs", flush=True)
 
     # detection configs
@@ -92,6 +98,9 @@ def main():
             detections = Annotation()
             detections.from_raven(detections_dir+raven_detections_file, class_header=None, verbose=True)
             detections.data["audio_channel"] -= 1 # convert to 0-indexed
+            # filter detections to only include those from the channel specified in detection_config
+            detections = detections.filter(f"audio_channel == {detection_config['AUDIO']['channel']}")
+            print(f"Loaded {len(detections)} detections from {raven_detections_file}", flush=True)
 
             # insert deployment metadata
             detections.insert_metadata(deployment_info_file, channel=detection_config['AUDIO']['channel'])
