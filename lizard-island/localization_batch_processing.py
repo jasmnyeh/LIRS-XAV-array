@@ -24,29 +24,38 @@ def main():
     # params
     audio_dir = f"/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/{args.folder}/ST/5147/"
     detections_dir = f"/Users/jasmineyeh/Desktop/WHOI/Selections/{args.folder}/"
-    output_dir = f"/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/{args.folder}/"
+    output_dir = f"/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/{args.folder}/localization_results/"
+    # if not exist then create output_dir
+    os.makedirs(output_dir, exist_ok=True)
 
     # start file is the first one in detections_dir, which is the one that has been processed by Raven and has a corresponding selection table
-    start_file = os.listdir(detections_dir)[0][:17] + ".wav"
-    print(f"Start file: {start_file}")
+    start_file = sorted(os.listdir(detections_dir))[0][:17] + ".wav"
+    print(f"Start file: {start_file}", flush=True)
     nfiles = len(os.listdir(detections_dir))
+    print(f"Number of files to process: {nfiles}", flush=True)
 
     # deployment metadata
     deployment_info_file = r'./config/deployment_info.csv'
     Deployment = DeploymentInfo()
     Deployment.read(deployment_info_file)
+    print("Loaded deployment metadata", flush=True)
 
     # hydrophone configs
     hydrophones_config_file = r'./config/hydrophones_config_LIRS-ROV.csv'
     hydrophones_config= pd.read_csv(hydrophones_config_file, skipinitialspace=True, dtype={'name': str, 'file_name_root': str})
+    # replace data path 
+    hydrophones_config["data_path"] += f"{args.folder}/ST/5147/"
+    print("Loaded hydrophone configs", flush=True)
 
     # detection configs
     detection_config_file = r'./config/detection_config_LIRS-ROV.yaml'
     detection_config = ecosound.core.tools.read_yaml(detection_config_file)
+    print("Loaded detection configs", flush=True)
 
     # localization configs
     localization_config_file = r'./config/localization_config_LIRS-ROV.yaml'
     localization_config = ecosound.core.tools.read_yaml(localization_config_file)
+    print("Loaded localization configs", flush=True)
 
     # create TDOA grid for grid search
     tdoa_grid_file = r'./tdoa_grid.npz'
@@ -61,22 +70,27 @@ def main():
 
     # load grid of precomputed TDOAs
     tdoa_grid = localization.GridSearch.load_tdoa_grid(tdoa_grid_file)
+    print("Created TDOA grid for grid search", flush=True)
 
-    # process nfiles starting from start_file 
     start_file_index = 0
+    start_processing = False
+    count = 0
+    # process nfiles starting from start_file 
     for idx, in_file in enumerate(os.listdir(audio_dir)):
         if in_file == start_file:
             start_file_index = idx
-        if idx >= start_file_index and idx < start_file_index + nfiles and in_file.endswith('.wav'):
-            print(f"Processing file {idx+1}/{nfiles}: {in_file}")
+            start_processing = True
+        if start_processing and idx < start_file_index + nfiles and in_file.endswith('.wav'):
+            print(f"Processing file {count+1}/{nfiles}: {in_file}")
 
             # Look up data files for all channels
-            audio_files = tools.find_audio_files(in_file, hydrophones_config)
+            print(f"Looking up audio files for {audio_dir+in_file}", flush=True)
+            audio_files = tools.find_audio_files(audio_dir+in_file, hydrophones_config)
 
             # loading annotations from Raven selection table
             raven_detections_file = in_file.replace('.wav', '.Table.1.selections.txt')
             detections = Annotation()
-            detections.from_raven(raven_detections_file, class_header=None, verbose=True)
+            detections.from_raven(detections_dir+raven_detections_file, class_header=None, verbose=True)
             detections.data["audio_channel"] -= 1 # convert to 0-indexed
 
             # insert deployment metadata
@@ -93,6 +107,8 @@ def main():
             new_localizations = localizations.filter("y > 0.7931") # inplace = True replaces the original datanew_localizations.
             new_localizations.to_csv(output_dir + f'{in_file}_filtered.csv')
             new_localizations.to_netcdf(output_dir + f'{in_file}_filtered.nc')
+
+            count += 1
 
 if __name__ == "__main__":
     main()
