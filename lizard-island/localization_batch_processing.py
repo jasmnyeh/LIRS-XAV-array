@@ -12,6 +12,7 @@ sys.path.append('../localization')
 import tools
 import detection
 import localization
+import copy
 
 def get_args():
     p = argparse.ArgumentParser()
@@ -26,17 +27,11 @@ def main():
     args = get_args()
 
     # params
-    audio_dir = args.audio_dir if args.audio_dir else f"/tmp2/b12902135/whoi/audio/{args.folder}/"
-    detections_dir = args.detections_dir if args.detections_dir else f"/tmp2/b12902135/whoi/Selections/{args.folder}/"
-    output_dir = args.output_dir if args.output_dir else f"/tmp2/b12902135/whoi/localization_results/{args.folder}/"
+    audio_dir = args.audio_dir if args.audio_dir else f"/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/{args.folder}/ST/5147/"
+    detections_dir = args.detections_dir if args.detections_dir else f"/Users/jasmineyeh/Desktop/WHOI/Selections/{args.folder}/"
+    output_dir = args.output_dir if args.output_dir else f"/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/{args.folder}/localization_results/"
     # if not exist then create output_dir
     os.makedirs(output_dir, exist_ok=True)
-
-    # start file is the first one in detections_dir, which is the one that has been processed by Raven and has a corresponding selection table
-    start_file = sorted(os.listdir(detections_dir))[0][:17] + ".wav"
-    print(f"Start file: {start_file}", flush=True)
-    nfiles = len(os.listdir(detections_dir))
-    print(f"Number of files to process: {nfiles}", flush=True)
 
     # deployment metadata
     deployment_info_file = r'./config/deployment_info.csv'
@@ -51,7 +46,7 @@ def main():
     if args.audio_dir:
         hydrophones_config["data_path"] = args.audio_dir
     else:
-        hydrophones_config["data_path"] += f"{args.folder}/"
+        hydrophones_config["data_path"] += f"{args.folder}/ST/5147/"
     print("Loaded hydrophone configs", flush=True)
 
     # detection configs
@@ -79,62 +74,56 @@ def main():
     tdoa_grid = localization.GridSearch.load_tdoa_grid(tdoa_grid_file)
     print("Created TDOA grid for grid search", flush=True)
 
-    start_file_index = 0
-    start_processing = False
-    count = 0
-    # process nfiles starting from start_file 
-    for idx, in_file in enumerate(sorted(os.listdir(audio_dir))):
-        if in_file == start_file:
-            start_file_index = idx
-            start_processing = True
-        if start_processing and idx < start_file_index + nfiles and in_file.endswith('.wav'):
-            print(f"Processing file {count+1}/{nfiles}: {in_file}")
+    # for all files in detections_dir, find the corresponding audio file in audio_dir and process it
+    num_files = len(os.listdir(detections_dir))
 
-            # Look up data files for all channels
-            print(f"Looking up audio files for {audio_dir+in_file}", flush=True)
-            audio_files = tools.find_audio_files(audio_dir+in_file, hydrophones_config)
+    for idx, in_file in enumerate(sorted(os.listdir(detections_dir))):
+        print(f"Processing file {idx + 1}/{num_files}: {in_file}")
+        audio_file = in_file.replace('.Table.1.selections.txt', '.wav')
+        audio_files = tools.find_audio_files(audio_dir+audio_file, hydrophones_config)
 
-            # loading annotations from Raven selection table
-            raven_detections_file = in_file.replace('.wav', '.Table.1.selections.txt')
-            detections = Annotation()
-            detections.from_raven(detections_dir+raven_detections_file, class_header=None, verbose=True)
-            detections.data["audio_channel"] -= 1 # convert to 0-indexed
-            # filter detections to only include those from the channel specified in detection_config
-            detections = detections.filter(f"audio_channel == {detection_config['AUDIO']['channel']}")
-            print(f"Loaded {len(detections)} detections from {raven_detections_file}", flush=True)
+        # loading annotations from Raven selection table
+        detections = Annotation()
+        detections.from_raven(detections_dir+in_file, class_header=None, verbose=True)
+        detections.data["audio_channel"] -= 1 # convert to 0-indexed
 
-            # insert deployment metadata
-            detections.insert_metadata(deployment_info_file, channel=detection_config['AUDIO']['channel'])
+        # filter detections to only include those from the channel specified in detection_config
+        detections = detections.filter(f"audio_channel == {detection_config['AUDIO']['channel']}")
+        print(f"Loaded {len(detections)} detections from {in_file}", flush=True)
+
+        # insert deployment metadata
+        detections.insert_metadata(deployment_info_file, channel=detection_config['AUDIO']['channel'])
+        
+        # split detections into batches of args.batch_size detections, or else the memory usage will be too high for the grid search
+        full_data = detections.data.copy()
+        batch_num = len(detections) // args.batch_size + 1
+
+        for batch_idx in range(batch_num):
+            print(f"Processing batch {batch_idx + 1}/{batch_num}", flush=True)
+            index = batch_idx * args.batch_size
+            detections_batch = copy.deepcopy(detections)
+            if batch_idx == batch_num: # last batch, may have less than args.batch_size detections
+                detections_batch.data = detections.data[index:]
+                detections_batch.data = full_data[index:].reset_index(drop=True)
+            else:
+                detections_batch.data = full_data[index:index+args.batch_size].reset_index(drop=True)
             
-            # split detections into chunks of args.batch_size detections, or else the memory usage will be too high for the grid search
-            # iterate over chunks and perform localization for each chunk
-            index = 0
-            batch_idx = 1
-            while index < len(detections):
-                print(f"Processing chunk {batch_idx}/{len(detections)//args.batch_size+1}", flush=True)
+            # Perform localization using grid search
+            localizations, PPDs = localization.GridSearch.run_localization(audio_files, detections_batch, tdoa_grid, deployment_info_file, detection_config, hydrophones_config, localization_config, verbose=False)
 
-                detections_chunk = detections
-                if index + args.batch_size > len(detections):
-                    detections_chunk.data = detections.data[index:]
-                else:
-                    detections_chunk.data = detections.data[index:index+args.batch_size]
-                
-                # Perform localization using grid search
-                localizations, PPDs = localization.GridSearch.run_localization(audio_files, detections_chunk, tdoa_grid, deployment_info_file, detection_config, hydrophones_config, localization_config, verbose=False)
+            save_filename = in_file.replace('.Table.1.selections.txt', f'_batch{batch_idx}')
+            # Save localization results to CSV
+            localizations.to_csv(output_dir + f'{save_filename}.csv')
+            localizations.to_netcdf(output_dir + f'{save_filename}.nc')
 
-                # Save localization results to CSV
-                localizations.to_csv(output_dir + f'{in_file}_batch{batch_idx}.csv')
-                localizations.to_netcdf(output_dir + f'{in_file}_batch{batch_idx}.nc')
-
-                # Filter localization results, leave only those in front of the camera (y > 0.7931)
+            # Filter localization results, leave only those in front of the camera (y > 0.7931)
+            if len(localizations) > 0:
                 new_localizations = localizations.filter("y > 0.7931") # inplace = True replaces the original datanew_localizations.
-                new_localizations.to_csv(output_dir + f'{in_file}_batch{batch_idx}_filtered.csv')
-                new_localizations.to_netcdf(output_dir + f'{in_file}_batch{batch_idx}_filtered.nc')
-
-                index += args.batch_size
-                batch_idx += 1
-
-            count += 1
+                new_localizations.to_csv(output_dir + f'{save_filename}_filtered.csv')
+                new_localizations.to_netcdf(output_dir + f'{save_filename}_filtered.nc')
+            else:
+                print("No localizations in this chunk, skipping")
+                continue
 
 if __name__ == "__main__":
     main()
