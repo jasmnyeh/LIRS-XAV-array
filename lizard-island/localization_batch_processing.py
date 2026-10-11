@@ -19,6 +19,7 @@ def get_args():
     p.add_argument("--audio_dir", type=str, default=None, help="Path to the audio files directory")
     p.add_argument("--detections_dir", type=str, default=None, help="Path to the detections directory")
     p.add_argument("--output_dir", type=str, default=None, help="Path to the output directory")
+    p.add_argument("--batch_size", type=int, default=30, help="Number of detections to process in each batch")
     return p.parse_args()
 
 def main():
@@ -82,7 +83,7 @@ def main():
     start_processing = False
     count = 0
     # process nfiles starting from start_file 
-    for idx, in_file in enumerate(os.listdir(audio_dir)):
+    for idx, in_file in enumerate(sorted(os.listdir(audio_dir))):
         if in_file == start_file:
             start_file_index = idx
             start_processing = True
@@ -104,18 +105,34 @@ def main():
 
             # insert deployment metadata
             detections.insert_metadata(deployment_info_file, channel=detection_config['AUDIO']['channel'])
+            
+            # split detections into chunks of args.batch_size detections, or else the memory usage will be too high for the grid search
+            # iterate over chunks and perform localization for each chunk
+            index = 0
+            batch_idx = 1
+            while index < len(detections):
+                print(f"Processing chunk {batch_idx}/{len(detections)//args.batch_size+1}", flush=True)
 
-            # Perform localization using grid search
-            localizations, PPDs = localization.GridSearch.run_localization(audio_files, detections, tdoa_grid, deployment_info_file, detection_config, hydrophones_config, localization_config, verbose=False)
+                detections_chunk = detections
+                if index + args.batch_size > len(detections):
+                    detections_chunk.data = detections.data[index:]
+                else:
+                    detections_chunk.data = detections.data[index:index+args.batch_size]
+                
+                # Perform localization using grid search
+                localizations, PPDs = localization.GridSearch.run_localization(audio_files, detections_chunk, tdoa_grid, deployment_info_file, detection_config, hydrophones_config, localization_config, verbose=False)
 
-            # Save localization results to CSV
-            localizations.to_csv(output_dir + f'{in_file}.csv')
-            localizations.to_netcdf(output_dir + f'{in_file}.nc')
+                # Save localization results to CSV
+                localizations.to_csv(output_dir + f'{in_file}_batch{batch_idx}.csv')
+                localizations.to_netcdf(output_dir + f'{in_file}_batch{batch_idx}.nc')
 
-            # Filter localization results, leave only those in front of the camera (y > 0.7931)
-            new_localizations = localizations.filter("y > 0.7931") # inplace = True replaces the original datanew_localizations.
-            new_localizations.to_csv(output_dir + f'{in_file}_filtered.csv')
-            new_localizations.to_netcdf(output_dir + f'{in_file}_filtered.nc')
+                # Filter localization results, leave only those in front of the camera (y > 0.7931)
+                new_localizations = localizations.filter("y > 0.7931") # inplace = True replaces the original datanew_localizations.
+                new_localizations.to_csv(output_dir + f'{in_file}_batch{batch_idx}_filtered.csv')
+                new_localizations.to_netcdf(output_dir + f'{in_file}_batch{batch_idx}_filtered.nc')
+
+                index += args.batch_size
+                batch_idx += 1
 
             count += 1
 
