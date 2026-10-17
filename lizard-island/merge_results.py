@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 result_folder = "/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/2023-11-24_morning/localization_results/"
-detection_folder = "/Users/jasmineyeh/Desktop/WHOI/Selections/2023-11-24_morning"
+detection_folder = "/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/2023-11-24_morning"
 
 for i, detection_file in enumerate(os.listdir(detection_folder)):
     print(f"Processing file {i + 1}/{len(os.listdir(detection_folder))}: {detection_file}")

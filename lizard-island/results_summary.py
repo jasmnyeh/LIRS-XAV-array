@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 result_folder = "/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/2023-11-24_morning/localization_results/"
-detection_folder = "/Users/jasmineyeh/Desktop/WHOI/Selections/2023-11-24_morning/"
+detection_folder = "/Volumes/XMOUY_SDD3/LizardIsland/MobileArray_data/2023-11-24_morning/"
 
 output_df = pd.DataFrame(columns=['idx', 'filename', 'annotations', 'localizations', 'filtered'])
 num_files = len(os.listdir(detection_folder))
